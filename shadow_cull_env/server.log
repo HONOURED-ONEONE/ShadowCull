@@ -1,0 +1,31 @@
+INFO:     Started server process [34868]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8005 (Press CTRL+C to quit)
+INFO:     127.0.0.1:59048 - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59050 - "POST /chat/completions HTTP/1.1" 404 Not Found
+INFO:     connection closed

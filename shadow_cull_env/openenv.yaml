@@ -1,0 +1,11 @@
+name: shadow_cull_env
+description: >
+  Legacy Migration & Shadow Dependency Decommission Environment. 
+  An RL environment for safe dependency-severance, testing an agent's ability to
+  translate code while finding and decommissioning hidden APIs safely.
+tags:
+  - openenv
+  - migration
+  - dependency-governance
+  - rl-environment
+version: 0.1.0
