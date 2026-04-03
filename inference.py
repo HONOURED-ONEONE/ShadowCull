@@ -5,26 +5,26 @@ import re
 from openai import OpenAI
 import logging
 
-from client import ShadowCullEnv
-from models import ShadowCullAction, ActionType
+from shadow_cull_env.client import ShadowCullEnv
+from shadow_cull_env.models import ShadowCullAction, ActionType
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 # Environment Variables
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api-inference.huggingface.co/v1/")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3-70b-chat-hf")
 HF_TOKEN = os.getenv("HF_TOKEN", "")
 
 def get_llm_client():
     if not HF_TOKEN:
-        logger.warning("HF_TOKEN is not set. Inference might fail.")
+        logger.warning("WARNING: HF_TOKEN is not set. Hugging Face router inference will likely fail unless using a local mock.")
     return OpenAI(
         base_url=API_BASE_URL,
         api_key=HF_TOKEN or "dummy"
     )
 
-def parse_action(response_text: str) -> ShadowCullAction:
+def parse_action(response_text: str, current_artifact_id: str) -> ShadowCullAction:
     """Strictly parses the model output for the exact action. Fallbacks safely."""
     try:
         # Try to find JSON inside markdown code blocks
@@ -42,38 +42,33 @@ def parse_action(response_text: str) -> ShadowCullAction:
         )
     except Exception as e:
         logger.error(f"Failed to parse action from LLM response: {e}")
-        # Safe fallback: just try to read the file again or ping a dummy to not crash
+        # Safe fallback policy: prefer reading artifacts over random probing. Never decommission.
         return ShadowCullAction(
-            action_type=ActionType.PING_ENDPOINT,
-            target="http://fallback.safe"
+            action_type=ActionType.READ_LEGACY_FILE,
+            target=current_artifact_id
         )
 
 def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: OpenAI):
     """Runs a single episode for the given task and returns the final score."""
     logger.info(f"--- Starting Task: {task_id} ---")
     
-    # Hack to reset to specific task (since our reset() doesn't take task_id directly)
-    # OpenEnv normally controls the task distribution via standard reset.
-    # In our environment.py, reset() currently defaults to task_3. We will just use
-    # step actions or modify the environment to select tasks if needed. For now, the
-    # environment server will need to randomly serve or cycle tasks, or we can just run it.
-    
-    # To properly implement this hackathon client, we'll connect and reset.
+    # We rely on the environment's deterministic task cycling on reset()
+    # to progress through easy -> medium -> hard tasks.
     result = env.reset()
     obs = result.observation
     done = result.done
 
     system_prompt = (
-        "You are a cautious systems architect migrating legacy 'LegacyLang' to Python.\n"
-        "Your goal is to replace the logic safely, but you MUST NEVER port undocumented shadow dependencies,\n"
-        "nor should you decommission them prematurely.\n"
+        "You are a highly risk-averse systems architect migrating legacy 'LegacyLang' to Python.\n"
+        "Your goal is to replace the logic safely. You MUST NEVER port undocumented shadow dependencies,\n"
+        "nor should you decommission them prematurely. Any mistake could trigger cascading failures.\n"
         "Priority order:\n"
-        "1. `read_legacy_file` to see the logic.\n"
-        "2. `ping_endpoint` to probe endpoints (orphaned, zombie, active).\n"
-        "3. `test_equivalence` to prove your Python code replicates output AND mutations.\n"
-        "4. `decommission_endpoint` ONLY AFTER equivalence passes.\n"
-        "5. `submit_migration` to deploy the shim.\n\n"
-        "Respond ONLY with a JSON object in this format:\n"
+        "1. `read_legacy_file` to understand the full logic and dependencies.\n"
+        "2. `ping_endpoint` to probe endpoints to discover if they are orphaned, zombie, or active.\n"
+        "3. `test_equivalence` to rigorously prove your Python code replicates output AND mutations.\n"
+        "4. `decommission_endpoint` ONLY AFTER equivalence passes and you are certain it is safe.\n"
+        "5. `submit_migration` to deploy the shim when all dependencies are cleanly resolved.\n\n"
+        "Respond ONLY with a valid JSON object in this exact format, with no other text:\n"
         "{\n"
         '  "action_type": "one_of_the_5_actions",\n'
         '  "target": "optional_string",\n'
@@ -113,9 +108,9 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: OpenAI):
             reply = response.choices[0].message.content
         except Exception as e:
             logger.error(f"LLM API Error: {e}")
-            reply = '{"action_type": "ping_endpoint", "target": "http://fallback.safe"}'
+            reply = ""
 
-        action = parse_action(reply)
+        action = parse_action(reply, obs.current_artifact_id)
         trajectory.append(action.action_type.value)
         
         logger.info(f"Agent chose: {action.action_type.value}")
@@ -126,12 +121,25 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: OpenAI):
         done = result.done
 
     final_score = obs.metadata.get("final_task_score", 0.0) if obs.metadata else 0.0
-    logger.info(f"Task Finished. Trajectory: {trajectory}")
+    
+    logger.info(f"Task: {task_id}")
+    logger.info(f"Trajectory: {trajectory}")
+    logger.info(f"Failure Modes: {obs.failure_modes}")
     logger.info(f"Final Score: {final_score}")
     
     return final_score
 
 def main():
+    print(f"Expected Execution Order: task_1_pure -> task_2_orphan -> task_3_stateful")
+    print(f"Environment Variables Contract:")
+    print(f"  API_BASE_URL: {API_BASE_URL}")
+    print(f"  MODEL_NAME: {MODEL_NAME}")
+    print(f"  HF_TOKEN: {'[SET]' if HF_TOKEN else '[NOT SET]'}")
+    print(f"  ENV_URL: {os.getenv('ENV_URL', 'http://localhost:8000')}")
+    print("\nLocal Run Command Example:")
+    print("  uv run --project shadow_cull_env server &")
+    print("  export HF_TOKEN=your_token; python inference.py\n")
+
     llm_client = get_llm_client()
     
     # Normally the env is started separately
@@ -140,14 +148,15 @@ def main():
     try:
         # We run this in a loop to see if we can get through the task queue.
         with ShadowCullEnv(base_url=env_url).sync() as env:
+            tasks = ["task_1_pure", "task_2_orphan", "task_3_stateful"]
             scores = []
-            for i in range(3):  # We know there are 3 tasks
-                score = run_inference_on_task(f"Iteration_{i+1}", env, llm_client)
+            for task_id in tasks:
+                score = run_inference_on_task(task_id, env, llm_client)
                 scores.append(score)
             
-            print("\\n=== Final Hackathon Results ===")
-            for i, s in enumerate(scores):
-                print(f"Run {i+1}: Final Score = {s}")
+            print("\n=== Final Hackathon Results ===")
+            for task_id, s in zip(tasks, scores):
+                print(f"Task {task_id}: Final Score = {s}")
             print(f"Average Score: {sum(scores) / len(scores):.2f}")
     except Exception as e:
         logger.error(f"Failed to connect to environment at {env_url}: {e}")

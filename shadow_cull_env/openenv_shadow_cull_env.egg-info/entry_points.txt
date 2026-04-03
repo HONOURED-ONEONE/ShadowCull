@@ -1,0 +1,2 @@
+[console_scripts]
+server = shadow_cull_env.server.app:main

@@ -4,8 +4,6 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-# TODO: Manual implementation required for ShadowCull logic.
-
 """Shadow Cull Env Environment Client."""
 
 from typing import Dict
@@ -15,9 +13,9 @@ from openenv.core.client_types import StepResult
 from openenv.core.env_server.types import State
 
 try:
-    from .models import ShadowCullAction, ShadowCullObservation
+    from .models import ShadowCullAction, ShadowCullObservation, ActionType
 except ImportError:
-    from models import ShadowCullAction, ShadowCullObservation
+    from models import ShadowCullAction, ShadowCullObservation, ActionType
 
 
 class ShadowCullEnv(
@@ -34,17 +32,17 @@ class ShadowCullEnv(
         >>> # Connect to a running server
         >>> with ShadowCullEnv(base_url="http://localhost:8000") as client:
         ...     result = client.reset()
-        ...     print(result.observation.echoed_message)
+        ...     print(result.observation.message)
         ...
-        ...     result = client.step(ShadowCullAction(message="Hello!"))
-        ...     print(result.observation.echoed_message)
+        ...     result = client.step(ShadowCullAction(action_type=ActionType.READ_LEGACY_FILE, target="legacy.ll"))
+        ...     print(result.observation.message)
 
     Example with Docker:
         >>> # Automatically start container and connect
-        >>> client = ShadowCullEnv.from_docker_image("shadow_cull_env-env:latest")
+        >>> client = ShadowCullEnv.from_docker_image("shadow_cull_env:latest")
         >>> try:
         ...     result = client.reset()
-        ...     result = client.step(ShadowCullAction(message="Test"))
+        ...     result = client.step(ShadowCullAction(action_type=ActionType.READ_LEGACY_FILE, target="legacy.ll"))
         ... finally:
         ...     client.close()
     """

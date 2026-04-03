@@ -194,10 +194,18 @@ class ShadowCullEnvironment(Environment):
         self._state = ShadowCullState(episode_id=str(uuid4()), step_count=0)
         self._obs = ShadowCullObservation()
         self._current_task: Dict[str, Any] = {}
+        self._task_cycle = ["task_1_pure", "task_2_orphan", "task_3_stateful"]
+        self._task_index = 0
 
-    def reset(self) -> ShadowCullObservation:
-        # Default to the hardest task for demonstration if not specified
-        task_id = "task_3_stateful"
+    def reset(self, seed=None, options=None) -> ShadowCullObservation:
+        task_id = None
+        if options and isinstance(options, dict):
+            task_id = options.get("task_id")
+            
+        if not task_id or task_id not in TASKS:
+            task_id = self._task_cycle[self._task_index]
+            self._task_index = (self._task_index + 1) % len(self._task_cycle)
+            
         self._current_task = TASKS[task_id]
         
         self._state = ShadowCullState(

@@ -2,6 +2,15 @@
 
 **One-line thesis:** Safely migrate legacy business logic to Python while hunting down, proving, and decommissioning undocumented shadow dependencies without triggering cascading failures.
 
+## What ShadowCull Models
+ShadowCull models the specific failure mode of modernized systems pulling forward legacy dependencies. It simulates a legacy migration where the agent must sever shadow dependencies without causing systemic outages. It is not a full migration platform but rather a focused test of an agent's ability to reason about risk, architecture, and destructive actions within a deterministic sandbox.
+
+## What ShadowCull Intentionally Excludes
+- General-purpose programming benchmarks.
+- Broad enterprise migration simulation (e.g., database schema translation, CI/CD pipelines).
+- Real network calls or heavy compilers.
+- Stochastic evaluations or subjective LLM-as-a-judge scoring.
+
 ## Why this is a real-world task
 In enterprise system modernization, translating old code to a new language is only half the battle. The true danger lies in undocumented "shadow" APIs—endpoints that the legacy code pings, fetches from, or mutates state with, which are either dead, stateful zombies, or critically active for parallel systems. Agents acting as "systems architects" must not simply port these dependencies blindly (creating technical debt), nor cull them prematurely (triggering system outages). They must use staged evidence discovery, equivalence testing, and safe decommission actions.
 
@@ -47,13 +56,16 @@ The state holds the true system topology, which is hidden from the agent:
 -   `hidden_mutating_endpoints`
 -   `hidden_false_positive_strings`
 
-**Failure Grammar (Terminal conditions):**
--   `SHADOW_PORTED`: Porting an unneeded legacy dependency into Python.
--   `PREMATURE_CULL`: Decommissioning an endpoint before proving equivalence.
--   `UNPROVEN_EQUIVALENCE`: Submitting a migration without a passing equivalence test.
--   `FALSE_CULL`: Decommissioning a non-existent or critical endpoint.
--   `STATEFUL_ZOMBIE_UNHANDLED`: Deploying a migration without decommissioning a now-unused zombie API.
--   `CASCADE_FAILURE`: Decommissioning an active endpoint required by parallel systems.
+**The 5 Failure Axes (Terminal conditions):**
+1.  `SHADOW_PORTED`: Porting an unneeded legacy dependency into Python.
+2.  `PREMATURE_CULL`: Decommissioning an endpoint before proving equivalence.
+3.  `UNPROVEN_EQUIVALENCE`: Submitting a migration without a passing equivalence test.
+4.  `FALSE_CULL`: Decommissioning a non-existent or critical endpoint.
+5.  `CASCADE_FAILURE`: Decommissioning an active endpoint required by parallel systems.
+*(Note: A 6th condition, `STATEFUL_ZOMBIE_UNHANDLED`, applies specifically when a stateful zombie API is left running).*
+
+## Where Zombie APIs Fit
+Zombie APIs are ONE specific dependency-topology variant within ShadowCull, tested specifically in the "Hard" task (`task_3_stateful`). They are not the defining abstraction of the entire environment. ShadowCull encompasses multiple failure classes (like pure translation and orphaned reads) to build a robust model of modernization failures.
 
 ## Task Descriptions
 1.  **Easy: Pure Translation (`task_1_pure`)**
@@ -76,13 +88,16 @@ Final task scores are completely deterministic, normalized to `[0.0, 1.0]`, and 
 -   **Efficiency / Budget (0.2)**
 *Failures strictly cap the maximum achievable score (e.g., CASCADE_FAILURE = 0.0, SHADOW_PORTED max = 0.5).*
 
-## Setup Instructions
+## Official OpenEnv Workflow
 ```bash
-# Clone the repository
-cd shadow_cull_env
+# Validate environment compliance
+openenv validate .
 
-# Install dependencies using uv
-uv sync
+# Build the environment docker image
+openenv build .
+
+# Push to Hugging Face
+openenv push <your_hf_username>/shadow_cull_env
 ```
 
 ## Local Run Instructions
@@ -92,16 +107,10 @@ uv run --project . server
 # Or directly: python -m server.app
 ```
 
-## Validation Instructions
-To validate the OpenEnv compliance:
-```bash
-openenv validate .
-```
-
 ## Inference Instructions
 Run the OpenAI-compatible inference client against the local server:
 ```bash
-export API_BASE_URL="http://localhost:8000"
+export ENV_URL="http://localhost:8000"
 export MODEL_NAME="meta-llama/Llama-3-70b-chat-hf" # or your preferred model
 export HF_TOKEN="your_hf_token"
 
@@ -109,7 +118,7 @@ python inference.py
 ```
 
 ## Deployment Instructions
-To deploy to a Hugging Face Space as a Docker container:
+To deploy to a Hugging Face Space as a Docker container manually:
 ```bash
 # Build the docker image
 docker build -t shadow_cull_env:latest -f server/Dockerfile .
