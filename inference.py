@@ -8,7 +8,7 @@ import logging
 from shadow_cull_env.client import ShadowCullEnv
 from shadow_cull_env.models import ShadowCullAction, ActionType
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s", stream=sys.stderr)
 logger = logging.getLogger(__name__)
 
 # Environment Variables
@@ -19,7 +19,7 @@ ENV_URL = os.getenv("ENV_URL", "http://localhost:8000")
 
 def get_llm_client():
     if not HF_TOKEN:
-        print("ERROR: HF_TOKEN environment variable is not set. Inference requires a valid token.")
+        sys.stderr.write("ERROR: HF_TOKEN environment variable is not set. Inference requires a valid token.\n")
         sys.exit(1)
     return OpenAI(
         base_url=API_BASE_URL,
@@ -131,16 +131,6 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: OpenAI):
     return final_score
 
 def main():
-    print(f"Expected Execution Order: task_1_pure -> task_2_orphan -> task_3_stateful")
-    print(f"Environment Variables Contract:")
-    print(f"  API_BASE_URL: {API_BASE_URL}")
-    print(f"  MODEL_NAME: {MODEL_NAME}")
-    print(f"  HF_TOKEN: {'[SET]' if HF_TOKEN else '[NOT SET]'}")
-    print(f"  ENV_URL: {ENV_URL}")
-    print("\nLocal Run Command Example:")
-    print("  uv run --project . server &")
-    print("  export HF_TOKEN=your_token; python inference.py\n")
-
     llm_client = get_llm_client()
     
     # Normally the env is started separately
@@ -150,15 +140,8 @@ def main():
         # We run this in a loop to see if we can get through the task queue.
         with ShadowCullEnv(base_url=env_url).sync() as env:
             tasks = ["task_1_pure", "task_2_orphan", "task_3_stateful"]
-            scores = []
             for task_id in tasks:
-                score = run_inference_on_task(task_id, env, llm_client)
-                scores.append(score)
-            
-            print("\n=== Final Hackathon Results ===")
-            for task_id, s in zip(tasks, scores):
-                print(f"Task {task_id}: Final Score = {s}")
-            print(f"Average Score: {sum(scores) / len(scores):.2f}")
+                run_inference_on_task(task_id, env, llm_client)
     except Exception as e:
         logger.error(f"Failed to connect to environment at {env_url}: {e}")
 
