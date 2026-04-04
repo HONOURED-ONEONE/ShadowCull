@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 
 from server.tasks import TASKS
 from server.grader import calculate_final_score
-from models import ShadowCullState, ShadowCullObservation
+from shadow_cull_env.models import ShadowCullState, ShadowCullObservation
 
 class TestNoveltyInvariants(unittest.TestCase):
     def test_all_tasks_declare_hazard_axes(self):

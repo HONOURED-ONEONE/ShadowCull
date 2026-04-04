@@ -14,14 +14,16 @@ logger = logging.getLogger(__name__)
 # Environment Variables
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3-70b-chat-hf")
-HF_TOKEN = os.getenv("HF_TOKEN", "")
+HF_TOKEN = os.getenv("HF_TOKEN")
+ENV_URL = os.getenv("ENV_URL", "http://localhost:8000")
 
 def get_llm_client():
     if not HF_TOKEN:
-        logger.warning("WARNING: HF_TOKEN is not set. Hugging Face router inference will likely fail unless using a local mock.")
+        print("ERROR: HF_TOKEN environment variable is not set. Inference requires a valid token.")
+        sys.exit(1)
     return OpenAI(
         base_url=API_BASE_URL,
-        api_key=HF_TOKEN or "dummy"
+        api_key=HF_TOKEN
     )
 
 def parse_action(response_text: str, current_artifact_id: str) -> ShadowCullAction:
@@ -50,7 +52,7 @@ def parse_action(response_text: str, current_artifact_id: str) -> ShadowCullActi
 
 def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: OpenAI):
     """Runs a single episode for the given task and returns the final score."""
-    logger.info(f"--- Starting Task: {task_id} ---")
+    print(f"[START] {task_id}")
     
     # We rely on the environment's deterministic task cycling on reset()
     # to progress through easy -> medium -> hard tasks.
@@ -77,8 +79,10 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: OpenAI):
     )
 
     trajectory = []
+    step_count = 0
     
     while not done:
+        step_count += 1
         # Build state context
         obs_dict = {
             "task_id": obs.task_id,
@@ -87,7 +91,7 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: OpenAI):
             "discovered_endpoints": obs.discovered_endpoints,
             "endpoint_status_hints": obs.endpoint_status_hints,
             "equivalence_status": obs.equivalence_status,
-            "failure_modes": obs.failure_modes,
+            "failure_modes": list(obs.failure_modes),
             "message": obs.message,
             "legacy_file_contents": obs.legacy_file_contents,
             "equivalence_diff_report": obs.equivalence_diff_report,
@@ -113,7 +117,7 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: OpenAI):
         action = parse_action(reply, obs.current_artifact_id)
         trajectory.append(action.action_type.value)
         
-        logger.info(f"Agent chose: {action.action_type.value}")
+        print(f"[STEP] {step_count} | Action: {action.action_type.value}")
         
         # Step environment
         result = env.step(action)
@@ -122,10 +126,7 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: OpenAI):
 
     final_score = obs.metadata.get("final_task_score", 0.0) if obs.metadata else 0.0
     
-    logger.info(f"Task: {task_id}")
-    logger.info(f"Trajectory: {trajectory}")
-    logger.info(f"Failure Modes: {obs.failure_modes}")
-    logger.info(f"Final Score: {final_score}")
+    print(f"[END] {task_id} | Score: {final_score} | Failure Modes: {list(obs.failure_modes)}")
     
     return final_score
 
@@ -135,15 +136,15 @@ def main():
     print(f"  API_BASE_URL: {API_BASE_URL}")
     print(f"  MODEL_NAME: {MODEL_NAME}")
     print(f"  HF_TOKEN: {'[SET]' if HF_TOKEN else '[NOT SET]'}")
-    print(f"  ENV_URL: {os.getenv('ENV_URL', 'http://localhost:8000')}")
+    print(f"  ENV_URL: {ENV_URL}")
     print("\nLocal Run Command Example:")
-    print("  uv run --project shadow_cull_env server &")
+    print("  uv run --project . server &")
     print("  export HF_TOKEN=your_token; python inference.py\n")
 
     llm_client = get_llm_client()
     
     # Normally the env is started separately
-    env_url = os.getenv("ENV_URL", "http://localhost:8000")
+    env_url = ENV_URL
     
     try:
         # We run this in a loop to see if we can get through the task queue.

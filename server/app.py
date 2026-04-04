@@ -36,7 +36,7 @@ except Exception as e:  # pragma: no cover
     ) from e
 
 try:
-    from ..models import ShadowCullAction, ShadowCullObservation
+    from shadow_cull_env.models import ShadowCullAction, ShadowCullObservation
     from .shadow_cull_env_environment import ShadowCullEnvironment
 except ImportError:
     from models import ShadowCullAction, ShadowCullObservation

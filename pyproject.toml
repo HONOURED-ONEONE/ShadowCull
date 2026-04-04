@@ -42,4 +42,4 @@ server = "shadow_cull_env.server.app:main"
 [tool.setuptools]
 include-package-data = true
 packages = ["shadow_cull_env", "shadow_cull_env.server"]
-package-dir = { "shadow_cull_env" = ".", "shadow_cull_env.server" = "server" }
+package-dir = { "shadow_cull_env" = "shadow_cull_env", "shadow_cull_env.server" = "server" }

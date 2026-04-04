@@ -19,7 +19,7 @@ from uuid import uuid4
 from openenv.core.env_server.interfaces import Environment
 
 try:
-    from ..models import (
+    from shadow_cull_env.models import (
         ActionType,
         ShadowCullAction,
         ShadowCullObservation,
