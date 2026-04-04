@@ -2,14 +2,31 @@
 
 **One-line thesis:** Safely migrate legacy business logic to Python while hunting down, proving, and decommissioning undocumented shadow dependencies without triggering cascading failures.
 
-## What ShadowCull Models
-ShadowCull models the specific failure mode of modernized systems pulling forward legacy dependencies. It simulates a legacy migration where the agent must sever shadow dependencies without causing systemic outages. It is not a full migration platform but rather a focused test of an agent's ability to reason about risk, architecture, and destructive actions within a deterministic sandbox.
+## ShadowCull as a Modernization Failure Engine
 
-## What ShadowCull Intentionally Excludes
+ShadowCull acts as a deterministic modernization-failure engine. Each of the three canonical tasks is a curated modernization hazard bundle designed to test specific risks. By treating legacy code migration not just as a syntax problem but as a systems architecture challenge, the environment models multiple modernization failure classes through latent composition. Note that ShadowCull is a focused emulator of these specific failure paths, not a fully generic hazard sampler.
+
+## Scope of Simulation
+
+**What ShadowCull Models:**
+- The hidden risks of pulling forward legacy dependencies during modernization.
+- Safe dependency severance without causing systemic outages.
+- The necessity of equivalence testing before decommissioning infrastructure.
+
+**What ShadowCull Intentionally Excludes:**
 - General-purpose programming benchmarks.
 - Broad enterprise migration simulation (e.g., database schema translation, CI/CD pipelines).
 - Real network calls or heavy compilers.
 - Stochastic evaluations or subjective LLM-as-a-judge scoring.
+
+## Five Hazard Axes
+
+Each hazard bundle in ShadowCull is constructed along five explicit axes:
+1. **Logic Pathology:** The structural or logical defect in the legacy code (e.g., dead code pathways, hidden mutations).
+2. **Dependency Topology:** How the legacy code connects to external systems (e.g., isolated, read-only shadow, stateful zombie).
+3. **Data Semantics:** How data flows or mutates through the system.
+4. **Operational Constraint:** The rules the agent must follow to safely migrate (e.g., maintaining state invariants, pruning network calls).
+5. **Governance Requirement:** The ultimate condition for success (e.g., safe decommission without double-mutating).
 
 ## Why this is a real-world task
 In enterprise system modernization, translating old code to a new language is only half the battle. The true danger lies in undocumented "shadow" APIs—endpoints that the legacy code pings, fetches from, or mutates state with, which are either dead, stateful zombies, or critically active for parallel systems. Agents acting as "systems architects" must not simply port these dependencies blindly (creating technical debt), nor cull them prematurely (triggering system outages). They must use staged evidence discovery, equivalence testing, and safe decommission actions.
@@ -65,7 +82,7 @@ The state holds the true system topology, which is hidden from the agent:
 *(Note: A 6th condition, `STATEFUL_ZOMBIE_UNHANDLED`, applies specifically when a stateful zombie API is left running).*
 
 ## Where Zombie APIs Fit
-Zombie APIs are ONE specific dependency-topology variant within ShadowCull, tested specifically in the "Hard" task (`task_3_stateful`). They are not the defining abstraction of the entire environment. ShadowCull encompasses multiple failure classes (like pure translation and orphaned reads) to build a robust model of modernization failures.
+Zombie APIs are ONE specific dependency-topology variant within ShadowCull. They are the centerpiece of the "Hard" task (`task_3_stateful`), not the defining abstraction of the entire environment. The environment encompasses multiple failure classes (like pure translation and orphaned reads) to build a robust model of modernization failures.
 
 ## Task Descriptions
 1.  **Easy: Pure Translation (`task_1_pure`)**

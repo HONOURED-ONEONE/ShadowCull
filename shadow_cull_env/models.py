@@ -14,8 +14,22 @@ ShadowCull legacy migration and shadow dependency decommission environment.
 from enum import Enum
 from typing import List, Dict, Optional
 
+from dataclasses import dataclass
 from openenv.core.env_server.types import Action, Observation, State
 from pydantic import Field
+
+
+@dataclass
+class ScenarioConfig:
+    """Metadata capturing the modernization-failure hazard bundle model."""
+    logic_pathology: str
+    dependency_topology: str
+    data_semantics: str
+    operational_constraint: str
+    governance_requirement: str
+    hazard_bundle_name: str
+    expected_failure_classes: List[str]
+    notes_for_grader: Optional[str] = None
 
 
 class ActionType(str, Enum):

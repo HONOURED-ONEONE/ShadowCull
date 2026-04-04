@@ -333,8 +333,9 @@ class ShadowCullEnvironment(Environment):
         self._obs.done = done
         
         if done:
-            final_score = calculate_final_score(self._state, self._obs)
+            final_score, score_breakdown = calculate_final_score(self._state, self._obs)
             self._obs.metadata["final_task_score"] = final_score
+            self._obs.metadata["score_breakdown"] = score_breakdown
             self._obs.message += f" [Final Task Score: {final_score}]"
             
         return self._obs
