@@ -114,7 +114,7 @@ openenv validate .
 openenv build .
 
 # Push to Hugging Face
-openenv push <your_hf_username>/shadow_cull_env
+openenv push --repo-id <your_hf_username>/shadow_cull_env
 ```
 
 ## Local Run Instructions
@@ -127,10 +127,10 @@ uv run --project . server
 ## Inference Instructions
 Run the OpenAI-compatible inference client against the local server:
 ```bash
-export ENV_URL="http://localhost:8000"
-export MODEL_NAME="meta-llama/Llama-3-70b-chat-hf" # or your preferred model
+export API_BASE_URL="https://router.huggingface.co/v1"
+export MODEL_NAME="meta-llama/Llama-3-70b-chat-hf"
 export HF_TOKEN="your_hf_token"
-
+export ENV_URL="http://localhost:8000"
 python inference.py
 ```
 
