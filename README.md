@@ -105,6 +105,15 @@ Final task scores are completely deterministic, normalized to `[0.0, 1.0]`, and 
 -   **Efficiency / Budget (0.2)**
 *Failures strictly cap the maximum achievable score (e.g., CASCADE_FAILURE = 0.0, SHADOW_PORTED max = 0.5).*
 
+## Baseline Inference Strategy
+The submitted root `inference.py` implements an LLM-orchestrated baseline agent.
+- For constrained translation-heavy cases, especially `task_1_pure`, the baseline first constructs a deterministic Python draft from the observed LegacyLang source.
+- It then validates that draft through `test_equivalence`.
+- If equivalence does not pass, the baseline performs a repair step using the returned equivalence feedback / diff signals.
+- For dependency-sensitive tasks such as `task_2_orphan` and `task_3_stateful`, the LLM remains responsible for staged evidence gathering, interpreting endpoint hints, and choosing safe decommission / submit actions after equivalence is established.
+
+This design is intentional: it reduces brittle first-pass code generation on simple deterministic subtasks while preserving the LLM’s role in reasoning, repair, and action selection.
+
 ## Official OpenEnv Workflow
 ```bash
 # Validate environment compliance

@@ -12,7 +12,7 @@ ShadowCull legacy migration and shadow dependency decommission environment.
 """
 
 from enum import Enum
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 from dataclasses import dataclass
 from openenv.core.env_server.types import Action, Observation, State
@@ -103,6 +103,10 @@ class ShadowCullObservation(Observation):
     message: str = Field(
         default="",
         description="System message detailing the result of the last action."
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Additional evaluation data."
     )
 
 

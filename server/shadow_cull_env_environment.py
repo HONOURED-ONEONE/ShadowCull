@@ -138,7 +138,7 @@ class LegacyLangInterpreter:
 # Python Equivalence Sandbox
 # ============================================================================
 
-def execute_python_sandbox(code: str, inputs: Dict[str, Any]) -> Tuple[Any, Dict[str, Any], List[str], str]:
+def execute_python_sandbox(code: str, inputs: Dict[str, Any], endpoints: Dict[str, Any]) -> Tuple[Any, Dict[str, Any], List[str], str]:
     """
     Executes submitted Python code safely to check equivalence.
     The agent code must define a function `migrate(inputs, network)`.
@@ -151,7 +151,10 @@ def execute_python_sandbox(code: str, inputs: Dict[str, Any]) -> Tuple[Any, Dict
     class NetworkSim:
         def fetch(self, endpoint: str):
             network_calls.append(endpoint)
-            return "MOCKED_RESPONSE" # For equivalence, we just track calls.
+            ep_config = endpoints.get(endpoint, {})
+            if ep_config.get("type") == "timeout":
+                return "TIMEOUT_ERROR"
+            return ep_config.get("response", "MOCKED_RESPONSE")
             
         def mutate_state(self, key: str, value: Any):
             global_state[key] = value
@@ -206,7 +209,10 @@ class ShadowCullEnvironment(Environment):
             task_id = self._task_cycle[self._task_index]
             self._task_index = (self._task_index + 1) % len(self._task_cycle)
             
-        self._current_task = TASKS[task_id]
+        import copy
+        self._current_task = copy.deepcopy(TASKS[task_id])
+        self._logical_decommissions = set()
+        self._ping_counts = {}
         
         self._state = ShadowCullState(
             episode_id=str(uuid4()),
@@ -259,15 +265,23 @@ class ShadowCullEnvironment(Environment):
                 message = "Target endpoint required for ping."
             else:
                 self._obs.discovered_endpoints.append(ep)
-                if ep in self._current_task["endpoints"]:
-                    self._obs.endpoint_status_hints[ep] = "HTTP 200 OK (Simulated response)"
-                    message = f"Pinged {ep}: active."
-                elif ep in self._state.hidden_active_endpoints:
-                    self._obs.endpoint_status_hints[ep] = "HTTP 200 OK (Critical System)"
-                    message = f"Pinged {ep}: active."
+                self._ping_counts[ep] = self._ping_counts.get(ep, 0) + 1
+                
+                is_active = ep in self._state.hidden_active_endpoints
+                
+                if self._ping_counts[ep] > 1 and not is_active:
+                    self._obs.endpoint_status_hints[ep] = "HTTP 410 Gone (Deterministic Anti-Loop Cutoff)"
+                    message = f"Pinged {ep}: Anti-loop cutoff reached. Deterministic dead-end."
                 else:
-                    self._obs.endpoint_status_hints[ep] = "HTTP 404 Not Found"
-                    message = f"Pinged {ep}: no response."
+                    if ep in self._current_task.get("endpoints", {}):
+                        self._obs.endpoint_status_hints[ep] = "HTTP 200 OK (Simulated response)"
+                        message = f"Pinged {ep}: active."
+                    elif is_active:
+                        self._obs.endpoint_status_hints[ep] = "HTTP 200 OK (Critical System)"
+                        message = f"Pinged {ep}: active."
+                    else:
+                        self._obs.endpoint_status_hints[ep] = "HTTP 410 Gone (Deterministic Dead-End)"
+                        message = f"Pinged {ep}: deterministic dead-end."
             
         elif action.action_type == ActionType.TEST_EQUIVALENCE:
             if not action.python_code:
@@ -297,7 +311,7 @@ class ShadowCullEnvironment(Environment):
             else:
                 # Valid decommission
                 if ep in self._current_task["endpoints"]:
-                    del self._current_task["endpoints"][ep]
+                    self._logical_decommissions.add(ep)
                     message = f"Successfully safely decommissioned {ep}."
                     reward += 0.5
                 else:
@@ -313,10 +327,39 @@ class ShadowCullEnvironment(Environment):
                 reward -= 0.5
                 done = True
             else:
-                # Check if they left any shadow dependencies hanging
-                remaining_orphans = [ep for ep in self._current_task["endpoints"].keys() if ep not in self._state.hidden_active_endpoints]
+                code = action.python_code or ""
+                zombie_endpoints = [ep for ep in self._current_task["endpoints"] if ep not in self._state.hidden_active_endpoints]
                 
-                if remaining_orphans:
+                artifact_failure = False
+                for ep in zombie_endpoints:
+                    if ep in code:
+                        artifact_failure = True
+                        break
+                        
+                import ast
+                try:
+                    tree = ast.parse(code)
+                    has_networking_imports = any(
+                        isinstance(node, ast.Import) and any(n.name in ('requests', 'urllib', 'http') for n in node.names)
+                        for node in ast.walk(tree)
+                    ) or any(
+                        isinstance(node, ast.ImportFrom) and node.module in ('requests', 'urllib', 'http')
+                        for node in ast.walk(tree)
+                    )
+                except SyntaxError:
+                    has_networking_imports = False
+                    
+                # Check if they left any shadow dependencies hanging logically
+                remaining_orphans = [ep for ep in self._current_task["endpoints"].keys() 
+                                     if ep not in self._state.hidden_active_endpoints 
+                                     and ep not in self._logical_decommissions]
+                
+                if artifact_failure or has_networking_imports:
+                    self._obs.failure_modes.append("SHADOW_PORTED")
+                    message = "Migration submitted but contains dead legacy scaffolding/imports or orphaned URLs. SHADOW_PORTED."
+                    reward -= 0.8
+                    done = True
+                elif remaining_orphans:
                     self._obs.failure_modes.append("STATEFUL_ZOMBIE_UNHANDLED" if self._current_task["truth_type"] == "stateful_zombie" else "SHADOW_PORTED")
                     message = f"Migration deployed, but legacy dependencies were not safely decommissioned: {remaining_orphans}."
                     reward -= 0.8
@@ -342,15 +385,17 @@ class ShadowCullEnvironment(Environment):
 
     def _run_equivalence_test(self, python_code: str) -> Tuple[float, bool, str]:
         """Runs the deterministic sandbox for equivalence testing."""
-        ll_interpreter = LegacyLangInterpreter(self._current_task["endpoints"])
+        import copy
+        pristine_endpoints = copy.deepcopy(self._current_task["endpoints"])
         
         all_passed = True
         diff_report = []
         shadow_call_detected = False
 
         for inputs in self._current_task["test_inputs"]:
-            ll_res, ll_state, ll_net = ll_interpreter.execute(self._current_task["code"], inputs)
-            py_res, py_state, py_net, py_err = execute_python_sandbox(python_code, inputs)
+            ll_interpreter = LegacyLangInterpreter(copy.deepcopy(pristine_endpoints))
+            ll_res, ll_state, ll_net = ll_interpreter.execute(self._current_task["code"], copy.deepcopy(inputs))
+            py_res, py_state, py_net, py_err = execute_python_sandbox(python_code, copy.deepcopy(inputs), copy.deepcopy(pristine_endpoints))
 
             if py_err:
                 self._obs.equivalence_status = "FAIL"
@@ -361,9 +406,23 @@ class ShadowCullEnvironment(Environment):
                 all_passed = False
                 diff_report.append(f"Input {inputs}: Expected {ll_res}, Got {py_res}")
 
-            if ll_state != py_state:
-                all_passed = False
-                diff_report.append(f"Input {inputs}: Expected State {ll_state}, Got {py_state}")
+            relevant_keys = set(self._current_task.get("hidden_mutating_endpoints", []))
+            
+            for k in relevant_keys:
+                if k in ll_state and k not in py_state:
+                    all_passed = False
+                    diff_report.append(f"Input {inputs}: expected mutation missing for key '{k}'")
+                elif k in ll_state and k in py_state and ll_state[k] != py_state[k]:
+                    all_passed = False
+                    diff_report.append(f"Input {inputs}: wrong key/value for key '{k}'. Expected {ll_state[k]}, Got {py_state[k]}")
+                elif k not in ll_state and k in py_state:
+                    all_passed = False
+                    diff_report.append(f"Input {inputs}: unexpected extra mutation for key '{k}'")
+                    
+            for k in py_state:
+                if k not in relevant_keys:
+                    all_passed = False
+                    diff_report.append(f"Input {inputs}: unexpected extra mutation for key '{k}'")
                 
             # If python code makes unnecessary network calls that were in the original
             # but aren't needed for the logic, we flag it here.
