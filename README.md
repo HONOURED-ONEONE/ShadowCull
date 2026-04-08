@@ -1,3 +1,12 @@
+---
+title: ShadowCull
+colorFrom: purple
+colorTo: gray
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 # ShadowCull: Legacy Migration & Shadow Dependency Decommission Environment
 
 **One-line thesis:** Safely migrate legacy business logic to Python while hunting down, proving, and decommissioning undocumented shadow dependencies without triggering cascading failures.
