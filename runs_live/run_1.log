@@ -1,0 +1,43 @@
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: parse_action path=json action=read_legacy_file code=yes
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: parse_action path=json action=read_legacy_file code=yes
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: parse_action path=json action=decommission_endpoint code=no
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: parse_action path=json action=read_legacy_file code=yes
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: parse_action path=json action=read_legacy_file code=yes
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: parse_action path=json action=read_legacy_file code=yes
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: parse_action path=json action=read_legacy_file code=yes
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: parse_action path=json action=read_legacy_file code=yes
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: parse_action path=json action=read_legacy_file code=yes
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: parse_action path=json action=read_legacy_file code=yes
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: parse_action path=json action=decommission_endpoint code=no
+INFO: HTTP Request: POST https://e8cxjuim8vei60-8000.proxy.runpod.net/v1/chat/completions "HTTP/1.1 200 OK"
+INFO: parse_action path=json action=decommission_endpoint code=yes
+[START] task_1_pure
+[STEP] 1 | Action: read_legacy_file | Equiv: UNTESTED | BestSource: None | Halted: False | HaltReason: None
+[STEP] 2 | Action: test_equivalence | Equiv: UNTESTED | BestSource: draft | Halted: False | HaltReason: None
+[STEP] 3 | Action: submit_migration | Equiv: PASS | BestSource: draft | Halted: False | HaltReason: None
+[END] task_1_pure | Score: 0.93 | Failure Modes: []
+[START] task_2_orphan
+[STEP] 1 | Action: read_legacy_file | Equiv: UNTESTED | BestSource: current_best | Halted: False | HaltReason: None
+[STEP] 2 | Action: test_equivalence | Equiv: UNTESTED | BestSource: current_best | Halted: False | HaltReason: None
+[STEP] 3 | Action: test_equivalence | Equiv: FAIL | BestSource: current_best | Halted: False | HaltReason: None
+[STEP] 4 | Action: test_equivalence | Equiv: FAIL | BestSource: current_best | Halted: False | HaltReason: None
+[STEP] 5 | Action: submit_migration | Equiv: FAIL | BestSource: current_best | Halted: True | HaltReason: repair_exhausted_nonpass
+[END] task_2_orphan | Score: 0.08 | Failure Modes: ['UNPROVEN_EQUIVALENCE']
+[START] task_3_stateful
+[STEP] 1 | Action: read_legacy_file | Equiv: UNTESTED | BestSource: current_best | Halted: False | HaltReason: None
+[STEP] 2 | Action: test_equivalence | Equiv: UNTESTED | BestSource: draft | Halted: False | HaltReason: None
+[STEP] 3 | Action: ping_endpoint | Equiv: PASS | BestSource: draft | Halted: False | HaltReason: None
+[STEP] 4 | Action: submit_migration | Equiv: PASS | BestSource: draft | Halted: True | HaltReason: task3_no_safe_target_after_pass
+[END] task_3_stateful | Score: 0.4 | Failure Modes: ['STATEFUL_ZOMBIE_UNHANDLED']
