@@ -193,6 +193,38 @@ class ShadowCullEnvironment(Environment):
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
     MAX_STEPS = 8
 
+    # -------------------------------------------------------------------------
+    # Tier 2 hardening helpers: snapshot / restore / logical decommission
+    # -------------------------------------------------------------------------
+    def _ensure_decommission_sets(self) -> None:
+        if not hasattr(self, "_pending_decommissions"):
+            self._pending_decommissions = set()
+        if not hasattr(self, "_decommissioned_endpoints"):
+            self._decommissioned_endpoints = set()
+
+    def _sync_runtime_flags_to_state(self) -> None:
+        self._ensure_decommission_sets()
+        self._state.pending_decommissions = list(self._pending_decommissions)
+        self._state.decommissioned_endpoints = list(self._decommissioned_endpoints)
+
+    def _mark_pending_decommission(self, endpoint: str) -> None:
+        self._ensure_decommission_sets()
+        self._pending_decommissions.add(endpoint)
+        self._sync_runtime_flags_to_state()
+
+    def _finalize_decommission(self, endpoint: str) -> None:
+        self._ensure_decommission_sets()
+        self._pending_decommissions.discard(endpoint)
+        self._decommissioned_endpoints.add(endpoint)
+        self._sync_runtime_flags_to_state()
+
+    def _finalize_pending_if_safe(self) -> None:
+        self._ensure_decommission_sets()
+        if self._obs.equivalence_status == "PASS":
+            for ep in list(self._pending_decommissions):
+                if ep not in self._state.hidden_active_endpoints:
+                    self._finalize_decommission(ep)
+
     def __init__(self):
         self._state = ShadowCullState(episode_id=str(uuid4()), step_count=0)
         self._obs = ShadowCullObservation()
@@ -211,7 +243,9 @@ class ShadowCullEnvironment(Environment):
             
         import copy
         self._current_task = copy.deepcopy(TASKS[task_id])
-        self._logical_decommissions = set()
+        self._pending_decommissions = set()
+        self._decommissioned_endpoints = set()
+        self._sync_runtime_flags_to_state()
         self._ping_counts = {}
         
         self._state = ShadowCullState(
@@ -311,7 +345,7 @@ class ShadowCullEnvironment(Environment):
             else:
                 # Valid decommission
                 if ep in self._current_task["endpoints"]:
-                    self._logical_decommissions.add(ep)
+                    self._mark_pending_decommission(ep)
                     message = f"Successfully safely decommissioned {ep}."
                     reward += 0.5
                 else:
@@ -349,10 +383,14 @@ class ShadowCullEnvironment(Environment):
                 except SyntaxError:
                     has_networking_imports = False
                     
+                self._finalize_pending_if_safe()
+                
                 # Check if they left any shadow dependencies hanging logically
+                self._ensure_decommission_sets()
+                handled_endpoints = self._pending_decommissions | self._decommissioned_endpoints
                 remaining_orphans = [ep for ep in self._current_task["endpoints"].keys() 
                                      if ep not in self._state.hidden_active_endpoints 
-                                     and ep not in self._logical_decommissions]
+                                     and ep not in handled_endpoints]
                 
                 if artifact_failure or has_networking_imports:
                     self._obs.failure_modes.append("SHADOW_PORTED")

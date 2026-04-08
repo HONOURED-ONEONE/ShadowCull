@@ -125,6 +125,14 @@ class ShadowCullState(State):
         default_factory=list,
         description="Strings that might look like endpoints but are dead code."
     )
+    pending_decommissions: List[str] = Field(
+        default_factory=list,
+        description="Tier 2 environment-hardening runtime bookkeeping. Endpoints logically decommissioned but not yet finalized."
+    )
+    decommissioned_endpoints: List[str] = Field(
+        default_factory=list,
+        description="Tier 2 environment-hardening runtime bookkeeping. Endpoints successfully decommissioned."
+    )
     safe_shim_deployed: bool = Field(
         default=False,
         description="Whether a safe shim has been successfully deployed."

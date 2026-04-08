@@ -80,6 +80,13 @@ def clean_python_code(code: Optional[str]) -> str:
     code = re.sub(r"```$", "", code, flags=re.IGNORECASE).strip()
     return code
 
+def _single_line(s: str, limit: int = 240) -> str:
+    """Collapse multiline strings into a grep-friendly single line."""
+    if not s:
+        return ""
+    s = " | ".join(part.strip() for part in s.splitlines() if part.strip())
+    return s[:limit]
+
 
 def extract_fenced_code(text: str) -> str:
     """Extract first fenced python block if present."""
@@ -633,6 +640,17 @@ def validate_task2_no_shadow_porting(obs, code: str, fallback_code: str) -> bool
     if not any(term in fallback_lower for term in suspicious_terms) and any(term in lower_code for term in suspicious_terms):
         return False
 
+    # NEW: reject trivial constant-only returns when legacy clearly has logic.
+    legacy_str = obs.legacy_file_contents or ""
+    has_logic = any(sym in legacy_str for sym in ["=", "+", "-", "*", "/"])
+    returns_constant = re.search(
+        r"return\s+(0|None|\[\]|\{\}|''|\"\"|False|True|-?\d+(?:\.\d+)?)\s*$",
+        code.strip(),
+        re.MULTILINE,
+    )
+    if has_logic and returns_constant:
+        return False
+
     return True
 
 
@@ -739,6 +757,25 @@ def choose_next_action_with_guardrails(
 
     draft_code = generate_fallback_migration(obs.legacy_file_contents)
     current_best = episode_state.get("best_code") or draft_code
+
+    # NEW: do not preserve an empty pre-read fallback forever for dependency tasks.
+    trivial_empty_fallback = "def migrate(inputs, network):\n    return 0"
+    if obs.task_id in ("task_2_orphan", "task_3_stateful"):
+        if not obs.legacy_file_contents:
+            # Force read first and avoid locking in a meaningless best_code.
+            episode_state["best_code"] = None
+            episode_state["best_code_source"] = None
+            return safe_make_action(
+                obs,
+                ActionType.READ_LEGACY_FILE,
+                target=obs.current_artifact_id,
+            )
+        elif episode_state.get("best_code") == trivial_empty_fallback:
+            # Replace the stale pre-read fallback with a fresh deterministic draft
+            # built from the now-available legacy contents.
+            current_best = draft_code
+            episode_state["best_code"] = draft_code
+            episode_state["best_code_source"] = "draft"
 
     # --------------------------------------------------------------------------
     # TASK 1 — deterministic draft first, repair second
@@ -1068,6 +1105,19 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: Optional
         result = env.step(action)
         obs = result.observation
         done = result.done
+
+        # Task-2-specific observability: surface the exact equivalence diff
+        # without changing benchmark behavior.
+        if obs.task_id == "task_2_orphan":
+            if obs.equivalence_status == "FAIL" and obs.equivalence_diff_report:
+                code_preview = _single_line((episode_state.get("best_code") or "")[:400], limit=240)
+                diff_preview = _single_line(obs.equivalence_diff_report, limit=320)
+                print(
+                    f"[TASK2_DIFF] Step: {step_count} | "
+                    f"BestSource: {episode_state.get('best_code_source')} | "
+                    f"Diff: {diff_preview} | "
+                    f"CodePreview: {code_preview}"
+                )
 
     final_score = 0.0
     message = getattr(obs, "message", "") or ""

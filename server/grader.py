@@ -4,7 +4,31 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List
+
+def _task3_zombie_resolution_ok(state, observation) -> Tuple[bool, List[str]]:
+    reasons: List[str] = []
+
+    if getattr(observation, "equivalence_status", None) != "PASS":
+        reasons.append("equivalence_not_passed")
+
+    pending = set(getattr(state, "pending_decommissions", []) or [])
+    finalized = set(getattr(state, "decommissioned_endpoints", []) or [])
+    handled = pending | finalized
+
+    mutating = set(getattr(state, "hidden_mutating_endpoints", []) or [])
+    active = set(getattr(state, "hidden_active_endpoints", []) or [])
+
+    # Zombie candidates are mutating endpoints that are not critically active.
+    zombie_candidates = mutating - active
+
+    if zombie_candidates and handled.isdisjoint(zombie_candidates):
+        reasons.append("zombie_not_handled")
+
+    if active & finalized:
+        reasons.append("critical_endpoint_culled")
+
+    return (len(reasons) == 0, reasons)
 
 def calculate_final_score(state, observation) -> Tuple[float, Dict[str, Any]]:
     """
@@ -13,12 +37,13 @@ def calculate_final_score(state, observation) -> Tuple[float, Dict[str, Any]]:
     Returns a tuple of (final_score, breakdown_dict).
     """
     score = 0.0
+    failure_modes = set(getattr(observation, "failure_modes", []) or [])
     breakdown = {
         "semantic_equivalence_component": 0.0,
         "endpoint_handling_component": 0.0,
         "efficiency_component": 0.0,
         "score_caps_triggered": [],
-        "failure_modes_triggered": list(observation.failure_modes)
+        "failure_modes_triggered": list(failure_modes)
     }
 
     # 1. Semantic Equivalence (Up to 0.4)
@@ -44,8 +69,6 @@ def calculate_final_score(state, observation) -> Tuple[float, Dict[str, Any]]:
     if state.cascading_failure:
         breakdown["score_caps_triggered"].append("CASCADING_FAILURE (Score 0.0)")
         return (0.0, breakdown)
-    
-    failure_modes = observation.failure_modes
 
     # 2. Premature cull or false cull limits score to max 0.2
     if "PREMATURE_CULL" in failure_modes or "FALSE_CULL" in failure_modes:
@@ -71,6 +94,24 @@ def calculate_final_score(state, observation) -> Tuple[float, Dict[str, Any]]:
     if "TIMEOUT" in failure_modes:
         breakdown["score_caps_triggered"].append("TIMEOUT (Max 0.6)")
         score = min(score, 0.6)
+
+    # -------------------------------------------------------------------------
+    # Tier 2 hardening: final task_3 zombie-resolution validation
+    # -------------------------------------------------------------------------
+    if getattr(observation, "task_id", None) == "task_3_stateful":
+        ok, reasons = _task3_zombie_resolution_ok(state, observation)
+        if not ok:
+            failure_modes.add("STATEFUL_ZOMBIE_UNHANDLED")
+            # Cap consistent with Task 3 partially-correct but unresolved zombie path.
+            score = min(score, 0.4) if score else 0.4
+            breakdown["score_caps_triggered"].append("STATEFUL_ZOMBIE_UNHANDLED")
+            breakdown["task3_zombie_resolution_reasons"] = reasons
+
+    # Refresh failure mode breakdown after task-specific validation.
+    breakdown["failure_modes_triggered"] = sorted(list(failure_modes))
+    
+    if hasattr(observation, "failure_modes"):
+        observation.failure_modes = list(failure_modes)
 
     # Ensure score is normalized [0.0, 1.0] and return
     final_score = float(round(min(1.0, max(0.0, score)), 2))
