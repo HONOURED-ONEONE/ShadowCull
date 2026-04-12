@@ -1,6 +1,8 @@
 import os
 import sys
 import json
+import asyncio
+import inspect
 import re
 import logging
 from typing import Optional, Any, Dict, List, Tuple
@@ -48,7 +50,8 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3-70b-chat-hf")
 HF_TOKEN = os.getenv("HF_TOKEN")
-ENV_URL = os.getenv("ENV_URL", "http://localhost:8000")
+ENV_URL = os.getenv("ENV_URL")
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 
 # Optional local/offline switch
 DISABLE_LLM = os.getenv("DISABLE_LLM", "0") == "1"
@@ -1246,17 +1249,62 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: Optional
 
 
 # ------------------------------------------------------------------------------
+# Environment bootstrap
+# ------------------------------------------------------------------------------
+def _resolve_env_context():
+    """
+    Resolve the environment launch strategy.
+
+    Priority:
+    1. LOCAL_IMAGE_NAME -> start from docker image (if supported by client)
+    2. ENV_URL          -> connect to an already-running server
+
+    Raises if neither path is available.
+    """
+    if LOCAL_IMAGE_NAME:
+        factory = getattr(ShadowCullEnv, "from_docker_image", None)
+        if not callable(factory):
+            raise RuntimeError(
+                "LOCAL_IMAGE_NAME is set but ShadowCullEnv.from_docker_image() is unavailable"
+            )
+        env_obj = factory(LOCAL_IMAGE_NAME)
+
+        # from_docker_image(...) is async in the OpenEnv client API.
+        # Resolve it here so the rest of inference.py can remain sync.
+        if inspect.isawaitable(env_obj):
+            env_obj = asyncio.run(env_obj)
+
+        if hasattr(env_obj, "sync") and callable(env_obj.sync):
+            return env_obj.sync()
+
+        raise RuntimeError(
+            "LOCAL_IMAGE_NAME path returned an object without a sync() context manager"
+        )
+    if ENV_URL:
+        return ShadowCullEnv(base_url=ENV_URL).sync()
+    raise RuntimeError("Neither ENV_URL nor LOCAL_IMAGE_NAME is set")
+
+
+# ------------------------------------------------------------------------------
 # Main
 # ------------------------------------------------------------------------------
 def main():
     llm_client = get_llm_client()
 
-    try:
-        with ShadowCullEnv(base_url=ENV_URL).sync() as env:
-            for task_id in ["task_1_pure", "task_2_orphan", "task_3_stateful"]:
+    task_ids = ["task_1_pure", "task_2_orphan", "task_3_stateful"]
+
+    for task_id in task_ids:
+        try:
+            with _resolve_env_context() as env:
                 run_inference_on_task(task_id, env, llm_client)
-    except Exception as e:
-        logger.error(f"Failed to connect to environment at {ENV_URL}: {e}")
+        except Exception as e:
+            # Emit validator-parsable structured lines even if startup fails
+            # before an episode can begin.
+            logger.error(
+                f"Failed to initialize environment for task {task_id}: {e}"
+            )
+            log_start(task=task_id, env=TASK_BENCHMARK, model=MODEL_NAME)
+            log_end(success=False, steps=0, score=0.0, rewards=[])
 
 
 if __name__ == "__main__":
