@@ -1283,18 +1283,9 @@ def main():
 
     task_ids = ["task_1_pure", "task_2_orphan", "task_3_stateful"]
 
-    for task_id in task_ids:
-        try:
-            with _resolve_env_context() as env:
-                run_inference_on_task(task_id, env, llm_client)
-        except Exception as e:
-            # Emit validator-parsable structured lines even if startup fails
-            # before an episode can begin.
-            logger.error(
-                f"Failed to initialize environment for task {task_id}: {e}"
-            )
-            log_start(task=task_id, env=TASK_BENCHMARK, model=MODEL_NAME)
-            log_end(success=False, steps=0, score=0.0, rewards=[])
+    with _resolve_env_context() as env:
+        for task_id in task_ids:
+            run_inference_on_task(task_id, env, llm_client)
 
 
 if __name__ == "__main__":
