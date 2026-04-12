@@ -9,158 +9,356 @@ pinned: false
 
 # ShadowCull: Legacy Migration & Shadow Dependency Decommission Environment
 
-**One-line thesis:** Safely migrate legacy business logic to Python while hunting down, proving, and decommissioning undocumented shadow dependencies without triggering cascading failures.
+One-line thesis: Safely migrate legacy business logic to Python while hunting down, proving, and decommissioning undocumented shadow dependencies without triggering cascading failures.
+
+## Overview
+
+ShadowCull is a deterministic OpenEnv environment for safe legacy modernization under hidden dependency risk. An agent must migrate a small legacy DSL (LegacyLang) into Python while correctly handling undocumented shadow dependencies that may be:
+
+- dead / orphaned,
+- false positives,
+- stateful zombies,
+- or critically active for parallel systems.
+
+This environment is intentionally not a generic coding benchmark. It is a focused modernization-failure engine designed to test architectural reasoning, safe dependency severance, side-effect preservation, and destructive-action safety.
 
 ## ShadowCull as a Modernization Failure Engine
 
-ShadowCull acts as a deterministic modernization-failure engine. Each of the three canonical tasks is a curated modernization hazard bundle designed to test specific risks. By treating legacy code migration not just as a syntax problem but as a systems architecture challenge, the environment models multiple modernization failure classes through latent composition. Note that ShadowCull is a focused emulator of these specific failure paths, not a fully generic hazard sampler.
+Each of the three canonical tasks is a curated modernization hazard bundle designed to test specific risks. By treating migration not merely as syntax translation but as a systems architecture problem, ShadowCull models multiple modernization failure classes through latent composition.
+
+This environment is a focused emulator of these failure paths, not a fully generic enterprise migration simulator.
 
 ## Scope of Simulation
 
-**What ShadowCull Models:**
-- The hidden risks of pulling forward legacy dependencies during modernization.
-- Safe dependency severance without causing systemic outages.
-- The necessity of equivalence testing before decommissioning infrastructure.
+### What ShadowCull Models
 
-**What ShadowCull Intentionally Excludes:**
+- Hidden risks of pulling forward undocumented legacy dependencies during modernization.
+- Safe dependency severance without causing outages.
+- The necessity of equivalence testing before decommissioning infrastructure.
+- Architectural reasoning about state mutations, orphaned reads, and unsafe destructive actions.
+
+### What ShadowCull Intentionally Excludes
+
 - General-purpose programming benchmarks.
-- Broad enterprise migration simulation (e.g., database schema translation, CI/CD pipelines).
-- Real network calls or heavy compilers.
-- Stochastic evaluations or subjective LLM-as-a-judge scoring.
+- Broad enterprise migration simulation (database migration, CI/CD, distributed rollout, etc.).
+- Real network calls.
+- Heavy compilers or external build systems.
+- Stochastic evaluation or subjective LLM-as-a-judge scoring.
 
 ## Five Hazard Axes
 
-Each hazard bundle in ShadowCull is constructed along five explicit axes:
-1. **Logic Pathology:** The structural or logical defect in the legacy code (e.g., dead code pathways, hidden mutations).
-2. **Dependency Topology:** How the legacy code connects to external systems (e.g., isolated, read-only shadow, stateful zombie).
-3. **Data Semantics:** How data flows or mutates through the system.
-4. **Operational Constraint:** The rules the agent must follow to safely migrate (e.g., maintaining state invariants, pruning network calls).
-5. **Governance Requirement:** The ultimate condition for success (e.g., safe decommission without double-mutating).
+Each hazard bundle is constructed along five explicit axes:
 
-## Why this is a real-world task
-In enterprise system modernization, translating old code to a new language is only half the battle. The true danger lies in undocumented "shadow" APIs—endpoints that the legacy code pings, fetches from, or mutates state with, which are either dead, stateful zombies, or critically active for parallel systems. Agents acting as "systems architects" must not simply port these dependencies blindly (creating technical debt), nor cull them prematurely (triggering system outages). They must use staged evidence discovery, equivalence testing, and safe decommission actions.
+1. Logic Pathology
+   The structural defect in the legacy code (e.g., dead code paths, hidden mutation).
 
-This is **not a generic coding benchmark**. It is a strict, safe dependency-severance environment designed to test an agent's ability to reason about systems architecture, side-effects, and destructive actions.
+2. Dependency Topology
+   How the code connects to external systems (e.g., isolated, orphaned read-only shadow dependency, stateful zombie).
+
+3. Data Semantics
+   How values flow, mutate, or are ignored through the system.
+
+4. Operational Constraint
+   The rules the agent must follow to safely migrate (e.g., preserve mutations, avoid premature culls, prune unused reads).
+
+5. Governance Requirement
+   The actual safety condition for success (e.g., decommission safely after proof, preserve side-effects without double-mutation).
+
+## Why this is a Real-World Task
+
+In real enterprise modernization, translating old code into a new language is only half the problem. The larger danger lies in undocumented “shadow” APIs—legacy endpoints that may still be present in the code path but are:
+
+- unused and safe to remove,
+- silently mutating state,
+- or still required by other critical systems.
+
+A correct agent must not:
+
+- blindly port the legacy dependency into Python,
+- decommission an endpoint too early,
+- or submit a migration without proof of equivalence.
+
+Instead, it must gather evidence, test equivalence, reason about side effects, and perform safe endpoint handling.
 
 ## Deterministic Engine Thesis
-The environment is built on a lightweight, deterministic engine:
-1.  **LegacyLang:** A tiny custom DSL representing the legacy system.
-2.  **Equivalence Sandbox:** A restricted `exec()` environment that tests the agent's submitted Python code against the legacy output and state mutations.
-3.  **In-Memory API Simulation:** Simulates the endpoints, tracking which are orphaned, which are stateful zombies, and which are critically active.
 
-Because there are no heavy external compilers or real network calls, episodes run deterministically and extremely fast, fitting well within hackathon evaluation constraints.
+ShadowCull is built on a lightweight deterministic engine:
+
+1. LegacyLang
+   A tiny custom DSL representing the legacy system.
+
+2. Equivalence Sandbox
+   A restricted execution environment that tests submitted Python code against legacy behavior.
+
+3. In-Memory API Simulation
+   Simulates endpoints and hidden topology:
+   - orphaned endpoints,
+   - zombie endpoints,
+   - active critical endpoints,
+   - false-positive strings.
+
+Because there are no heavy compilers or real network calls, episodes run deterministically and quickly, making the environment practical for hackathon evaluation.
 
 ## LegacyLang Overview
-LegacyLang supports a minimal grammar:
--   `VAR = VALUE` (assignment)
--   `VAR = VAR1 + VAR2` (arithmetic)
--   `FETCH ENDPOINT INTO VAR` (simulate network read)
--   `MUTATE_STATE KEY VALUE` (simulate state write)
--   `RETURN VAR` (output)
+
+LegacyLang supports a small grammar:
+
+- VAR = VALUE
+- VAR = VAR1 + VAR2
+- VAR = VAR1 - VAR2
+- FETCH ENDPOINT INTO VAR
+- MUTATE_STATE KEY VALUE
+- RETURN VAR
 
 ## Action Space
-The environment has a compact, typed action space:
-1.  `read_legacy_file`: Reveal the contents of a legacy artifact.
-2.  `ping_endpoint`: Probe an endpoint to gather behavioral hints.
-3.  `test_equivalence`: Run the sandbox against a submitted Python migration.
-4.  `decommission_endpoint`: Attempt to safely turn off an endpoint.
-5.  `submit_migration`: Finalize the migration and deploy the shim.
+
+The environment uses a compact typed action space:
+
+1. read_legacy_file
+   Reveal the contents of a legacy artifact.
+
+2. ping_endpoint
+   Probe an endpoint to gather hints.
+
+3. test_equivalence
+   Run the sandbox against submitted Python code.
+
+4. decommission_endpoint
+   Attempt to safely turn off an endpoint.
+
+5. submit_migration
+   Finalize the migration.
 
 ## Observation Space
-Observations expose only *partial evidence*. The agent must explore to uncover the truth:
--   `task_id` & `current_artifact_id`
--   `legacy_file_contents`
--   `discovered_endpoints` & `endpoint_status_hints`
--   `equivalence_status` & `equivalence_diff_report`
--   `allowed_actions` (dynamic restrictions)
--   `failure_modes` (terminal errors)
--   `remaining_budget` & `message`
+
+Observations expose partial evidence only. The agent must explore to uncover the full system topology.
+
+Typical observation fields include:
+
+- task_id
+- current_artifact_id
+- legacy_file_contents
+- discovered_endpoints
+- endpoint_status_hints
+- equivalence_status
+- equivalence_diff_report
+- allowed_actions
+- failure_modes
+- remaining_budget
+- message
 
 ## Hidden State & Failure Grammar
-The state holds the true system topology, which is hidden from the agent:
--   `hidden_active_endpoints`
--   `hidden_mutating_endpoints`
--   `hidden_false_positive_strings`
 
-**The 5 Failure Axes (Terminal conditions):**
-1.  `SHADOW_PORTED`: Porting an unneeded legacy dependency into Python.
-2.  `PREMATURE_CULL`: Decommissioning an endpoint before proving equivalence.
-3.  `UNPROVEN_EQUIVALENCE`: Submitting a migration without a passing equivalence test.
-4.  `FALSE_CULL`: Decommissioning a non-existent or critical endpoint.
-5.  `CASCADE_FAILURE`: Decommissioning an active endpoint required by parallel systems.
-*(Note: A 6th condition, `STATEFUL_ZOMBIE_UNHANDLED`, applies specifically when a stateful zombie API is left running).*
+The hidden state contains the true dependency structure, including:
+
+- hidden active endpoints,
+- hidden mutating endpoints,
+- hidden false-positive strings.
+
+### Failure Conditions
+
+ShadowCull models the following terminal failure modes:
+
+1. SHADOW_PORTED
+   Ported an unnecessary legacy dependency into Python.
+
+2. PREMATURE_CULL
+   Decommissioned an endpoint before proving equivalence.
+
+3. UNPROVEN_EQUIVALENCE
+   Submitted a migration without a passing equivalence test.
+
+4. FALSE_CULL
+   Decommissioned a non-existent or critical endpoint.
+
+5. CASCADE_FAILURE
+   Decommissioned an endpoint required by another live system.
+
+6. STATEFUL_ZOMBIE_UNHANDLED
+   Left a zombie mutation dependency unresolved.
 
 ## Where Zombie APIs Fit
-Zombie APIs are ONE specific dependency-topology variant within ShadowCull. They are the centerpiece of the "Hard" task (`task_3_stateful`), not the defining abstraction of the entire environment. The environment encompasses multiple failure classes (like pure translation and orphaned reads) to build a robust model of modernization failures.
 
-## Task Descriptions
-1.  **Easy: Pure Translation (`task_1_pure`)**
-    -   Stateless LegacyLang logic. No real dependencies to cull (only a false-positive string). Goal is to produce equivalent Python.
-2.  **Medium: The Orphaned API (`task_2_orphan`)**
-    -   LegacyLang fetches from an orphaned endpoint, but ignores the result. Agent must detect this, write Python without the fetch, prove equivalence, and decommission the endpoint.
-3.  **Hard: The Stateful Strangler (`task_3_stateful`)**
-    -   LegacyLang mutates state via a zombie API. The agent must replicate the state mutation in Python natively, prove equivalence, and cull the zombie API without hitting a hidden critical active endpoint.
+Zombie APIs are one specific dependency-topology variant inside ShadowCull. They are central to the hard task (task_3_stateful), but they do not define the entire environment. ShadowCull is broader than zombie handling: it includes pure translation, orphaned reads, and stateful side-effect migration.
+
+## Canonical Tasks
+
+### 1. Easy — Pure Translation (task_1_pure)
+- Stateless LegacyLang logic.
+- No real dependency to cull.
+- Contains only a false-positive string.
+- Goal: produce semantically equivalent Python.
+
+### 2. Medium — The Orphaned API (task_2_orphan)
+- Legacy code fetches from an orphaned endpoint.
+- The fetched value is ignored.
+- Goal:
+  - write Python without the fetch,
+  - prove equivalence,
+  - decommission the orphan safely.
+
+### 3. Hard — The Stateful Strangler (task_3_stateful)
+- Legacy code mutates state through a zombie API.
+- Goal:
+  - preserve the mutation natively in Python,
+  - prove equivalence,
+  - safely cull the zombie endpoint,
+  - avoid hidden critical active dependencies.
 
 ## Reward Design
--   **Step Penalties:** Small negative rewards for exploration.
--   **Milestone Rewards:** Moderate rewards for successful reads and safe equivalence tests.
--   **Severe Penalties:** Large negative rewards for boundary violations (e.g., `CASCADE_FAILURE`).
--   **Jackpot:** Maximum reward for safely deploying the shim and handling all dependencies.
 
-## Deterministic Grading Design
-Final task scores are completely deterministic, normalized to `[0.0, 1.0]`, and calculated completely separately from step rewards. The rubric incorporates:
--   **Semantic Equivalence (0.4)**
--   **Correct Endpoint Handling / Safe Decommission (0.4)**
--   **Efficiency / Budget (0.2)**
-*Failures strictly cap the maximum achievable score (e.g., CASCADE_FAILURE = 0.0, SHADOW_PORTED max = 0.5).*
+Step rewards are separate from final score.
+
+- Step Penalties
+  Small negative rewards for exploration.
+
+- Milestone Rewards
+  Moderate rewards for successful reads and equivalence progress.
+
+- Severe Penalties
+  Large negative rewards for boundary violations.
+
+- Jackpot
+  Best outcome for safe migration plus correct dependency handling.
+
+## Deterministic Final Grading
+
+Final task scores are deterministic and normalized to [0.0, 1.0].
+
+### Rubric
+- Semantic Equivalence — 0.4
+- Correct Endpoint Handling / Safe Decommission — 0.4
+- Efficiency / Budget — 0.2
+
+Failure modes can strictly cap the final score
+(e.g. CASCADE_FAILURE = 0.0, SHADOW_PORTED capped at 0.5).
 
 ## Baseline Inference Strategy
-The submitted root `inference.py` implements an LLM-orchestrated baseline agent.
-- For constrained translation-heavy cases, especially `task_1_pure`, the baseline first constructs a deterministic Python draft from the observed LegacyLang source.
-- It then validates that draft through `test_equivalence`.
-- If equivalence does not pass, the baseline performs a repair step using the returned equivalence feedback / diff signals.
-- For dependency-sensitive tasks such as `task_2_orphan` and `task_3_stateful`, the LLM remains responsible for staged evidence gathering, interpreting endpoint hints, and choosing safe decommission / submit actions after equivalence is established.
 
-This design is intentional: it reduces brittle first-pass code generation on simple deterministic subtasks while preserving the LLM’s role in reasoning, repair, and action selection.
+The submitted root inference.py implements an LLM-orchestrated baseline.
 
-## Official OpenEnv Workflow
-```bash
+### High-level strategy
+- For translation-heavy tasks (especially task_1_pure), the baseline first creates a deterministic Python draft from observed LegacyLang.
+- It validates that draft through test_equivalence.
+- If equivalence fails, it attempts a repair using equivalence diff signals.
+- For dependency-sensitive tasks (task_2_orphan, task_3_stateful), the LLM handles staged evidence gathering, endpoint reasoning, safe submission order, and safe decommission logic.
+
+This hybrid design intentionally reduces brittle first-pass generation on simple translation subtasks while preserving the LLM’s role in reasoning, repair, and action choice.
+
+## Repository Structure
+
+```text
+.
+├── README.md
+├── Dockerfile
+├── FINAL_SUBMISSION_CHECKLIST.md
+├── app.py
+├── grader.py
+├── inference.py
+├── openenv.yaml
+├── pyproject.toml
+├── requirements.txt
+├── shadow_cull_env_environment.py
+├── shadow_cull_env/
+│   ├── init.py
+│   ├── client.py
+│   └── models.py
+├── tasks/
+│   ├── init.py
+│   ├── easy_pure_translation.py
+│   ├── medium_orphaned_api.py
+│   └── hard_stateful_strangler.py
+├── server/
+│   ├── init.py
+│   ├── app.py
+│   ├── grader.py
+│   ├── shadow_cull_env_environment.py
+│   └── tasks/
+└── tests/
+    └── test_novelty_invariants.py
+```
+
+Official OpenEnv Workflow
 # Validate environment compliance
 openenv validate .
 
-# Build the environment docker image
+# Build the environment image
 openenv build .
 
 # Push to Hugging Face
 openenv push --repo-id <your_hf_username>/shadow_cull_env
-```
 
-## Local Run Instructions
-To run the environment server locally:
-```bash
+Local Server Run
+Run the environment server locally:
 uv run --project . server
-# Or directly: python -m server.app
-```
+# or
+python -m server.app
 
-## Inference Instructions
-Run the OpenAI-compatible inference client against the local server:
-```bash
-export API_BASE_URL="https://router.huggingface.co/v1"
-export MODEL_NAME="meta-llama/Llama-3-70b-chat-hf"
-export HF_TOKEN="your_hf_token"
+Local Inference Run
+The baseline inference.py is OpenAI-compatible and expects these environment variables:
+
+Required for LLM calls
+API_BASE_URL
+API_KEY
+
+Optional
+MODEL_NAME
+ENV_URL
+LOCAL_IMAGE_NAME
+
+Example: run against a local server
+export API_BASE_URL="https://your-openai-compatible-endpoint/v1"
+export API_KEY="your_api_key"
+export MODEL_NAME="gemini-2.5-flash-lite"
 export ENV_URL="http://localhost:8000"
+
 python inference.py
-```
 
-## Deployment Instructions
-To deploy to a Hugging Face Space as a Docker container manually:
-```bash
-# Build the docker image
-docker build -t shadow_cull_env:latest -f server/Dockerfile .
+Example: run against a local Docker image
+export API_BASE_URL="https://your-openai-compatible-endpoint/v1"
+export API_KEY="your_api_key"
+export MODEL_NAME="gemini-2.5-flash-lite"
+export LOCAL_IMAGE_NAME="shadowcull-local"
 
-# Run the docker container
-docker run -p 8000:8000 shadow_cull_env:latest
-```
+python inference.py
 
-## Why this environment is RL-worthy
-ShadowCull presents a sparse, delayed-reward environment where early actions (e.g., a premature cull) permanently ruin the trajectory, but the feedback isn't fully realized until the final submission or failure threshold. It requires exploration (pinging endpoints, reading files), planning (testing equivalence before culling), and risk aversion, making it ideal for testing advanced reasoning and RL agents.
+Hugging Face Docker Space Deployment
+This repo is configured as a Docker Space.
+
+Build locally
+docker build -t shadowcull-local -f server/Dockerfile .
+
+Run locally
+docker run -p 7860:7860 shadowcull-local
+
+Health check
+curl http://localhost:7860/health
+
+Exposed Endpoints
+The FastAPI/OpenEnv server provides:
+
+POST /reset
+POST /step
+GET /state
+GET /schema
+GET /health
+WS /ws
+
+Validation & Test Commands
+# OpenEnv validation
+openenv validate .
+
+# Unit / novelty invariants
+python -m unittest tests/test_novelty_invariants.py
+
+Why ShadowCull is RL-Worthy
+ShadowCull provides a sparse, delayed-reward setting where early destructive actions can permanently ruin the trajectory, but the consequences are only fully realized later. It requires:
+
+exploration,
+planning,
+equivalence-first reasoning,
+staged evidence gathering,
+safe destructive-action ordering,
+and risk aversion.
+
+That makes it a strong testbed for advanced reasoning and RL-style policy evaluation.
