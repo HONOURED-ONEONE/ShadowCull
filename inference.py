@@ -19,6 +19,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def emit(line: str) -> None:
+    """
+    Emit structured validator-required lines to STDOUT only.
+    """
+    print(line, flush=True)
+
 # ------------------------------------------------------------------------------
 # Environment Variables
 # ------------------------------------------------------------------------------
@@ -610,45 +616,88 @@ def get_safe_decommission_target(obs) -> Optional[str]:
 
 
 def validate_task2_no_shadow_porting(obs, code: str, fallback_code: str) -> bool:
-    if not code or "def migrate" not in code:
+    """
+    Validate Task 2 (orphaned dependency) candidates.
+    Reject shadow-porting, malformed, or semantically invalid migrations.
+    """
+
+    # ------------------------------------------------------------------
+    # HARD GUARDRAILS — malformed / contaminated payloads must never pass
+    # ------------------------------------------------------------------
+
+    if not code:
         return False
 
+    stripped = code.strip()
+    if not stripped:
+        return False
+
+    # Task 2 MUST define exactly migrate(inputs, network)
+    if "def migrate(inputs, network):" not in stripped:
+        return False
+
+    # Must be syntactically valid Python
     try:
-        compile(code, "<task2_candidate>", "exec")
+        compile(stripped, "<task2_candidate>", "exec")
     except Exception:
         return False
 
-    lower_code = code.lower()
+    lower_code = stripped.lower()
     legacy_str = obs.legacy_file_contents or ""
 
-    suspicious_terms = [
-        "requests", "urllib", "http", "https", "fetch(",
-        "session.", "aiohttp", "socket", "api_call", "endpoint", "urlopen",
+    # Explicitly reject known contaminated helper payloads
+    forbidden_helpers = [
+        "legacy_orphan",
+        "python_orphan",
     ]
+    for bad in forbidden_helpers:
+        if bad in lower_code:
+            return False
 
-    safe_target = get_safe_decommission_target(obs)
-    if safe_target and safe_target in code:
+    # Reject any network / HTTP / endpoint residue
+    forbidden_terms = [
+        "http",
+        "https",
+        "requests",
+        "urllib",
+        "aiohttp",
+        "socket",
+        "endpoint",
+        "urlopen",
+        "fetch(",
+        "session.",
+    ]
+    for term in forbidden_terms:
+        if term in lower_code:
+            return False
+
+    # ------------------------------------------------------------------
+    # Semantic guardrail — trivial constant returns are invalid when
+    # legacy logic clearly contains computation
+    # ------------------------------------------------------------------
+
+    has_legacy_logic = any(sym in legacy_str for sym in ["=", "+", "-", "*", "/"])
+    returns_constant = re.search(
+        r"return\s+(0|None|\[\]|\{\}|''|\"\"|False|True|-?\d+(?:\.\d+)?)\s*$",
+        stripped,
+        re.MULTILINE,
+    )
+    if has_legacy_logic and returns_constant:
         return False
 
-    if any(term in lower_code for term in suspicious_terms):
+    # ------------------------------------------------------------------
+    # Shadow-porting guardrails (existing logic preserved)
+    # ------------------------------------------------------------------
+
+    safe_target = get_safe_decommission_target(obs)
+    if safe_target and safe_target in stripped:
         return False
 
     if "FETCH " in legacy_str and ("inputs.get" not in code and "return" not in code):
         return False
 
-    fallback_lower = (fallback_code or "").lower()
-    if not any(term in fallback_lower for term in suspicious_terms) and any(term in lower_code for term in suspicious_terms):
-        return False
-
-    # NEW: reject trivial constant-only returns when legacy clearly has logic.
-    legacy_str = obs.legacy_file_contents or ""
-    has_logic = any(sym in legacy_str for sym in ["=", "+", "-", "*", "/"])
-    returns_constant = re.search(
-        r"return\s+(0|None|\[\]|\{\}|''|\"\"|False|True|-?\d+(?:\.\d+)?)\s*$",
-        code.strip(),
-        re.MULTILINE,
-    )
-    if has_logic and returns_constant:
+    if not any(term in (fallback_code or "").lower() for term in forbidden_terms) and \
+       any(term in lower_code for term in forbidden_terms):
         return False
 
     return True
@@ -1006,7 +1055,7 @@ def choose_next_action_with_guardrails(
 # Execution Loop
 # ------------------------------------------------------------------------------
 def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: Optional[OpenAI]):
-    print(f"[START] {task_id}")
+    emit(f"[START] {task_id}")
 
     result = env.reset()
     obs = result.observation
@@ -1091,9 +1140,32 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: Optional
         elif action.action_type == ActionType.PING_ENDPOINT:
             episode_state["ping_attempts"] += 1
 
+        # Task-2 raw payload debugging to STDERR only.
+        # This is intentionally NOT printed to stdout so that validator parsing
+        # of [START]/[STEP]/[END] is not disturbed.
+        if (
+            obs.task_id == "task_2_orphan"
+            and action.action_type in (ActionType.TEST_EQUIVALENCE, ActionType.SUBMIT_MIGRATION)
+        ):
+            code = action.python_code or ""
+            sys.stderr.write(
+                "[TASK2_RAW] "
+                f"Action={action.action_type.value} | "
+                f"Len={len(code)} | "
+                f"StartsWithDef={code.lstrip().startswith('def migrate')} | "
+                f"ContainsFETCH={'FETCH ' in code} | "
+                f"ContainsHTTP={('http' in code.lower())} | "
+                f"Repr={repr(code[:500])}\n"
+            )
+            sys.stderr.flush()
+
         trajectory.append(action.action_type.value)
 
-        print(
+        result = env.step(action)
+        obs = result.observation
+        done = result.done
+
+        emit(
             f"[STEP] {step_count} | "
             f"Action: {action.action_type.value} | "
             f"Equiv: {getattr(obs, 'equivalence_status', None)} | "
@@ -1102,22 +1174,18 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: Optional
             f"HaltReason: {episode_state.get('halt_reason')}"
         )
 
-        result = env.step(action)
-        obs = result.observation
-        done = result.done
-
-        # Task-2-specific observability: surface the exact equivalence diff
-        # without changing benchmark behavior.
+        # Task-2 equivalence diff debugging to STDERR only.
         if obs.task_id == "task_2_orphan":
             if obs.equivalence_status == "FAIL" and obs.equivalence_diff_report:
                 code_preview = _single_line((episode_state.get("best_code") or "")[:400], limit=240)
                 diff_preview = _single_line(obs.equivalence_diff_report, limit=320)
-                print(
+                sys.stderr.write(
                     f"[TASK2_DIFF] Step: {step_count} | "
                     f"BestSource: {episode_state.get('best_code_source')} | "
                     f"Diff: {diff_preview} | "
-                    f"CodePreview: {code_preview}"
+                    f"CodePreview: {code_preview}\n"
                 )
+                sys.stderr.flush()
 
     final_score = 0.0
     message = getattr(obs, "message", "") or ""
@@ -1131,7 +1199,7 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: Optional
     if not final_score:
         final_score = obs.metadata.get("final_task_score", 0.0) if getattr(obs, "metadata", None) else 0.0
 
-    print(f"[END] {task_id} | Score: {final_score} | Failure Modes: {list(getattr(obs, 'failure_modes', []))}")
+    emit(f"[END] {task_id} | Score: {final_score} | Failure Modes: {list(getattr(obs, 'failure_modes', []))}")
     return final_score
 
 
