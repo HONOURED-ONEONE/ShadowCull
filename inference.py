@@ -47,9 +47,9 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
 # ------------------------------------------------------------------------------
 # Environment Variables
 # ------------------------------------------------------------------------------
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3-70b-chat-hf")
-API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
+API_BASE_URL = os.environ["API_BASE_URL"]
+MODEL_NAME = os.getenv("MODEL_NAME", "gemini-2.5-flash-lite")
+API_KEY = os.environ["API_KEY"]
 
 ENV_URL = os.getenv("ENV_URL")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
@@ -72,8 +72,7 @@ def get_llm_client() -> Optional[OpenAI]:
 
     if not API_KEY:
         sys.stderr.write(
-            "ERROR: API_KEY environment variable is not set. "
-            "Set API_KEY (or HF_TOKEN for local fallback) or use DISABLE_LLM=1.\n"
+            "ERROR: API_KEY environment variable is not set.\n"
         )
         sys.exit(1)
 
