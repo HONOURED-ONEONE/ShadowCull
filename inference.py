@@ -49,7 +49,8 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
 # ------------------------------------------------------------------------------
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3-70b-chat-hf")
-HF_TOKEN = os.getenv("HF_TOKEN")
+API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
+
 ENV_URL = os.getenv("ENV_URL")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 
@@ -69,16 +70,16 @@ def get_llm_client() -> Optional[OpenAI]:
         logger.warning("DISABLE_LLM=1 -> running without live model calls.")
         return None
 
-    if not HF_TOKEN:
+    if not API_KEY:
         sys.stderr.write(
-            "ERROR: HF_TOKEN environment variable is not set. "
-            "Set HF_TOKEN or use DISABLE_LLM=1.\n"
+            "ERROR: API_KEY environment variable is not set. "
+            "Set API_KEY (or HF_TOKEN for local fallback) or use DISABLE_LLM=1.\n"
         )
         sys.exit(1)
 
     return OpenAI(
         base_url=API_BASE_URL,
-        api_key=HF_TOKEN,
+        api_key=API_KEY,
     )
 
 
