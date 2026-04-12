@@ -19,11 +19,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def emit(line: str) -> None:
-    """
-    Emit structured validator-required lines to STDOUT only.
-    """
-    print(line, flush=True)
+# ------------------------------------------------------------------------------
+# Structured stdout logging (must match official sample format)
+# ------------------------------------------------------------------------------
+TASK_BENCHMARK = os.getenv("SHADOWCULL_BENCHMARK", "shadowcull")
+
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}",
+        flush=True,
+    )
 
 # ------------------------------------------------------------------------------
 # Environment Variables
@@ -980,11 +997,16 @@ def choose_next_action_with_guardrails(
                 python_code=valid_code,
             )
 
+        # FINAL TASK-2 GUARDRAIL:
+        # Never allow the original malformed action.python_code to leak into
+        # TEST_EQUIVALENCE or SUBMIT_MIGRATION once valid_code has been resolved.
         return safe_make_action(
             obs,
             action.action_type,
             target=action.target or obs.current_artifact_id,
-            python_code=action.python_code,
+            python_code=valid_code
+            if action.action_type in (ActionType.TEST_EQUIVALENCE, ActionType.SUBMIT_MIGRATION)
+            else action.python_code,
         )
 
     # --------------------------------------------------------------------------
@@ -1055,11 +1077,15 @@ def choose_next_action_with_guardrails(
 # Execution Loop
 # ------------------------------------------------------------------------------
 def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: Optional[OpenAI]):
-    emit(f"[START] {task_id}")
+    log_start(task=task_id, env=TASK_BENCHMARK, model=MODEL_NAME)
 
     result = env.reset()
     obs = result.observation
     done = result.done
+
+    rewards: List[float] = []
+    final_score = 0.0
+    success = False
 
     system_prompt = (
         "You are a highly risk-averse systems architect migrating LegacyLang to Python.\n\n"
@@ -1078,6 +1104,7 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: Optional
     trajectory: List[str] = []
     step_count = 0
     episode_state = {
+        "last_action_error": None,
         "has_repaired": False,
         "best_code": None,
         "best_code_source": None,
@@ -1087,119 +1114,134 @@ def run_inference_on_task(task_id: str, env: ShadowCullEnv, llm_client: Optional
         "halt_reason": None,
     }
 
-    while not done:
-        step_count += 1
+    try:
+        while not done:
+            step_count += 1
 
-        obs_dict = {
-            "task_id": obs.task_id,
-            "current_artifact_id": obs.current_artifact_id,
-            "allowed_actions": getattr(obs, "allowed_actions", None),
-            "discovered_endpoints": getattr(obs, "discovered_endpoints", None),
-            "endpoint_status_hints": getattr(obs, "endpoint_status_hints", None),
-            "equivalence_status": getattr(obs, "equivalence_status", None),
-            "failure_modes": list(getattr(obs, "failure_modes", [])),
-            "message": getattr(obs, "message", None),
-            "legacy_file_contents": getattr(obs, "legacy_file_contents", None),
-            "equivalence_diff_report": getattr(obs, "equivalence_diff_report", None),
-        }
+            obs_dict = {
+                "task_id": obs.task_id,
+                "current_artifact_id": obs.current_artifact_id,
+                "allowed_actions": getattr(obs, "allowed_actions", None),
+                "discovered_endpoints": getattr(obs, "discovered_endpoints", None),
+                "endpoint_status_hints": getattr(obs, "endpoint_status_hints", None),
+                "equivalence_status": getattr(obs, "equivalence_status", None),
+                "failure_modes": list(getattr(obs, "failure_modes", [])),
+                "message": getattr(obs, "message", None),
+                "legacy_file_contents": getattr(obs, "legacy_file_contents", None),
+                "equivalence_diff_report": getattr(obs, "equivalence_diff_report", None),
+            }
 
-        if llm_client is None:
-            reply = ""
-        else:
-            try:
-                response = llm_client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {
-                            "role": "user",
-                            "content": f"Current Observation:\n{json.dumps(obs_dict, indent=2)}",
-                        },
-                    ],
-                    max_tokens=700,
-                    temperature=0.0,
-                )
-                reply = response.choices[0].message.content or ""
-            except Exception as e:
-                logger.error(f"LLM API Error: {e}")
+            if llm_client is None:
                 reply = ""
+            else:
+                try:
+                    response = llm_client.chat.completions.create(
+                        model=MODEL_NAME,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {
+                                "role": "user",
+                                "content": f"Current Observation:\n{json.dumps(obs_dict, indent=2)}",
+                            },
+                        ],
+                        max_tokens=700,
+                        temperature=0.0,
+                    )
+                    reply = response.choices[0].message.content or ""
+                except Exception as e:
+                    logger.error(f"LLM API Error: {e}")
+                    reply = ""
 
-        action = parse_action(reply, obs.current_artifact_id)
+            action = parse_action(reply, obs.current_artifact_id)
 
-        action = choose_next_action_with_guardrails(
-            obs,
-            action,
-            trajectory,
-            llm_client,
-            episode_state,
-        )
-
-        # Count EXECUTED guarded actions
-        if action.action_type == ActionType.TEST_EQUIVALENCE:
-            episode_state["equivalence_attempts"] += 1
-        elif action.action_type == ActionType.PING_ENDPOINT:
-            episode_state["ping_attempts"] += 1
-
-        # Task-2 raw payload debugging to STDERR only.
-        # This is intentionally NOT printed to stdout so that validator parsing
-        # of [START]/[STEP]/[END] is not disturbed.
-        if (
-            obs.task_id == "task_2_orphan"
-            and action.action_type in (ActionType.TEST_EQUIVALENCE, ActionType.SUBMIT_MIGRATION)
-        ):
-            code = action.python_code or ""
-            sys.stderr.write(
-                "[TASK2_RAW] "
-                f"Action={action.action_type.value} | "
-                f"Len={len(code)} | "
-                f"StartsWithDef={code.lstrip().startswith('def migrate')} | "
-                f"ContainsFETCH={'FETCH ' in code} | "
-                f"ContainsHTTP={('http' in code.lower())} | "
-                f"Repr={repr(code[:500])}\n"
+            action = choose_next_action_with_guardrails(
+                obs,
+                action,
+                trajectory,
+                llm_client,
+                episode_state,
             )
-            sys.stderr.flush()
 
-        trajectory.append(action.action_type.value)
+            # Count EXECUTED guarded actions
+            if action.action_type == ActionType.TEST_EQUIVALENCE:
+                episode_state["equivalence_attempts"] += 1
+            elif action.action_type == ActionType.PING_ENDPOINT:
+                episode_state["ping_attempts"] += 1
 
-        result = env.step(action)
-        obs = result.observation
-        done = result.done
-
-        emit(
-            f"[STEP] {step_count} | "
-            f"Action: {action.action_type.value} | "
-            f"Equiv: {getattr(obs, 'equivalence_status', None)} | "
-            f"BestSource: {episode_state.get('best_code_source')} | "
-            f"Halted: {episode_state.get('halted')} | "
-            f"HaltReason: {episode_state.get('halt_reason')}"
-        )
-
-        # Task-2 equivalence diff debugging to STDERR only.
-        if obs.task_id == "task_2_orphan":
-            if obs.equivalence_status == "FAIL" and obs.equivalence_diff_report:
-                code_preview = _single_line((episode_state.get("best_code") or "")[:400], limit=240)
-                diff_preview = _single_line(obs.equivalence_diff_report, limit=320)
+            # Task-2 raw payload debugging to STDERR only.
+            # This is intentionally NOT printed to stdout so that validator parsing
+            # of [START]/[STEP]/[END] is not disturbed.
+            if (
+                obs.task_id == "task_2_orphan"
+                and action.action_type in (ActionType.TEST_EQUIVALENCE, ActionType.SUBMIT_MIGRATION)
+            ):
+                code = action.python_code or ""
                 sys.stderr.write(
-                    f"[TASK2_DIFF] Step: {step_count} | "
-                    f"BestSource: {episode_state.get('best_code_source')} | "
-                    f"Diff: {diff_preview} | "
-                    f"CodePreview: {code_preview}\n"
+                    "[TASK2_RAW] "
+                    f"Action={action.action_type.value} | "
+                    f"Len={len(code)} | "
+                    f"StartsWithDef={code.lstrip().startswith('def migrate')} | "
+                    f"ContainsFETCH={'FETCH ' in code} | "
+                    f"ContainsHTTP={('http' in code.lower())} | "
+                    f"Repr={repr(code[:500])}\n"
                 )
                 sys.stderr.flush()
 
-    final_score = 0.0
-    message = getattr(obs, "message", "") or ""
-    match = re.search(r"\[Final Task Score:\s*([0-9.]+)\]", message)
-    if match:
-        try:
-            final_score = float(match.group(1))
-        except Exception:
-            final_score = 0.0
+            trajectory.append(action.action_type.value)
 
-    if not final_score:
-        final_score = obs.metadata.get("final_task_score", 0.0) if getattr(obs, "metadata", None) else 0.0
+            result = env.step(action)
+            obs = result.observation
+            done = result.done
 
-    emit(f"[END] {task_id} | Score: {final_score} | Failure Modes: {list(getattr(obs, 'failure_modes', []))}")
+            reward = float(getattr(result, "reward", 0.0) or 0.0)
+            rewards.append(reward)
+            last_error = getattr(obs, "last_action_error", None)
+            episode_state["last_action_error"] = last_error
+            action_str = action.action_type.value
+
+            log_step(
+                step=step_count,
+                action=action_str,
+                reward=reward,
+                done=done,
+                error=last_error,
+            )
+
+            # Task-2 equivalence diff debugging to STDERR only.
+            if obs.task_id == "task_2_orphan":
+                if obs.equivalence_status == "FAIL" and obs.equivalence_diff_report:
+                    code_preview = _single_line((episode_state.get("best_code") or "")[:400], limit=240)
+                    diff_preview = _single_line(obs.equivalence_diff_report, limit=320)
+                    sys.stderr.write(
+                        f"[TASK2_DIFF] Step: {step_count} | "
+                        f"BestSource: {episode_state.get('best_code_source')} | "
+                        f"Diff: {diff_preview} | "
+                        f"CodePreview: {code_preview}\n"
+                    )
+                    sys.stderr.flush()
+
+        message = getattr(obs, "message", "") or ""
+        match = re.search(r"\[Final Task Score:\s*([0-9.]+)\]", message)
+        if match:
+            try:
+                final_score = float(match.group(1))
+            except Exception:
+                final_score = 0.0
+
+        if not final_score:
+            final_score = obs.metadata.get("final_task_score", 0.0) if getattr(obs, "metadata", None) else 0.0
+
+        failure_modes = list(getattr(obs, "failure_modes", []))
+        success = bool(final_score > 0.0 and not failure_modes)
+
+    finally:
+        log_end(
+            success=success,
+            steps=step_count,
+            score=final_score,
+            rewards=rewards,
+        )
+
     return final_score
 
 
