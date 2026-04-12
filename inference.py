@@ -51,7 +51,7 @@ API_BASE_URL = os.environ["API_BASE_URL"]
 MODEL_NAME = os.getenv("MODEL_NAME")
 API_KEY = os.environ["API_KEY"]
 
-ENV_URL = os.getenv("ENV_URL")
+ENV_URL = os.getenv("ENV_URL", "https://honoured-oneone-shadowcull.hf.space")
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 
 # Optional local/offline switch
