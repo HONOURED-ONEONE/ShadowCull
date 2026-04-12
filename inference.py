@@ -48,7 +48,7 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
 # Environment Variables
 # ------------------------------------------------------------------------------
 API_BASE_URL = os.environ["API_BASE_URL"]
-MODEL_NAME = os.getenv("MODEL_NAME", "gemini-2.5-flash-lite")
+MODEL_NAME = os.getenv("MODEL_NAME")
 API_KEY = os.environ["API_KEY"]
 
 ENV_URL = os.getenv("ENV_URL")
@@ -65,17 +65,7 @@ MAX_PING_ATTEMPTS_TASK3 = 2
 # ------------------------------------------------------------------------------
 # Client Setup
 # ------------------------------------------------------------------------------
-def get_llm_client() -> Optional[OpenAI]:
-    if DISABLE_LLM:
-        logger.warning("DISABLE_LLM=1 -> running without live model calls.")
-        return None
-
-    if not API_KEY:
-        sys.stderr.write(
-            "ERROR: API_KEY environment variable is not set.\n"
-        )
-        sys.exit(1)
-
+def get_llm_client() -> OpenAI:
     return OpenAI(
         base_url=API_BASE_URL,
         api_key=API_KEY,
